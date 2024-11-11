@@ -32,7 +32,7 @@ pub enum NativeResponse {
 impl NativeMessaging {
     pub fn new(master_key: &[u8]) -> Self {
         let storage: Box<dyn SecureStorage> = if cfg!(target_os = "linux") {
-            Box::new(LinuxStorage::new("password_manager_service"))
+            Box::new(LinuxStorage::new())
         } else {
             unimplemented!("Platform not supported")
         };
