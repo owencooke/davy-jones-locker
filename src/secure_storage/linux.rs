@@ -89,6 +89,7 @@ fn get_attributes_with_id(id: &str) -> HashMap<&str, &str> {
 mod tests {
     use super::*;
 
+    #[test]
     fn test_save_load_delete() {
         let storage = LinuxStorage::new();
 

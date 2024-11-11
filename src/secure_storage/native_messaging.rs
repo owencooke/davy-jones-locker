@@ -62,7 +62,7 @@ impl NativeMessaging {
     }
 
     fn get_password(&self, url: &str) -> Result<Credentials, StorageError> {
-        let encrypted = self.storage.load(&[], url)?;
+        let encrypted = self.storage.load(url)?;
 
         let nonce = Nonce::from_slice(&encrypted.nonce);
         let decrypted = self
@@ -96,6 +96,6 @@ impl NativeMessaging {
             nonce: nonce_bytes.to_vec(),
         };
 
-        self.storage.save(&[], &item)
+        self.storage.save(&item)
     }
 }
