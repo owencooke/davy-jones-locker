@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+pub const SERVICE_NAME: &str = "davy-jones-locker";
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EncryptedItem {
     pub id: String,

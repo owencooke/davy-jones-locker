@@ -1,68 +1,61 @@
-use super::{EncryptedItem, SecureStorage, StorageError};
+use super::{item::SERVICE_NAME, EncryptedItem, SecureStorage, StorageError};
 
+use base64::{engine::general_purpose::STANDARD as b64_engine, Engine};
 use libsecret::{self, Schema, SchemaAttributeType};
 use std::collections::HashMap;
 
 pub struct LinuxStorage {
     schema: Schema,
-    service_name: String,
 }
 
 impl LinuxStorage {
-    pub fn new(service_name: String) -> Self {
+    pub fn new() -> Self {
         // Create schema with required attributes
-        let mut attributes = HashMap::new();
-        attributes.insert("service", SchemaAttributeType::String);
-        attributes.insert("id", SchemaAttributeType::String);
+        let mut attribute_types = HashMap::new();
+        attribute_types.insert("service", SchemaAttributeType::String);
+        attribute_types.insert("id", SchemaAttributeType::String);
 
         let schema = Schema::new(
             "org.freedesktop.Secret.Generic",
             libsecret::SchemaFlags::NONE,
-            attributes,
+            attribute_types,
         );
 
-        Self {
-            schema,
-            service_name,
-        }
+        Self { schema }
     }
 }
 
 impl SecureStorage for LinuxStorage {
-    async fn save(&self, item: &EncryptedItem) -> Result<(), StorageError> {
-        let mut attributes = HashMap::new();
-        attributes.insert("service", self.service_name.as_str());
-        attributes.insert("id", &item.id);
-
+    fn save(&self, item: &EncryptedItem) -> Result<(), StorageError> {
         // Convert the encrypted item to base64 to store as string
-        let serialized_data = base64::encode(&item.encrypted_data);
+        let b64 = b64_engine.encode(&item.encrypted_data);
 
         // Store the password using libsecret
-        libsecret::password_store_future(
+        libsecret::password_store_sync(
             Some(&self.schema),
-            attributes,
+            get_attributes_with_id(item.id.as_str()),
             Some(&libsecret::COLLECTION_DEFAULT),
-            &format!("{}/{}", self.service_name, item.id),
-            &serialized_data,
+            &format!("{}/{}", SERVICE_NAME, item.id),
+            &b64,
+            gio::Cancellable::NONE,
         )
-        .await
         .map_err(|e| StorageError::Storage(e.to_string()))?;
 
         Ok(())
     }
 
-    async fn load(&self, id: &str) -> Result<EncryptedItem, StorageError> {
-        let mut attributes = HashMap::new();
-        attributes.insert("service", self.service_name.as_str());
-        attributes.insert("id", id);
-
-        let secret = libsecret::password_lookup_future(Some(&self.schema), attributes)
-            .await
-            .map_err(|e| StorageError::Storage(e.to_string()))?
-            .ok_or(StorageError::NotFound)?;
+    fn load(&self, id: &str) -> Result<EncryptedItem, StorageError> {
+        let secret = libsecret::password_lookup_sync(
+            Some(&self.schema),
+            get_attributes_with_id(id),
+            gio::Cancellable::NONE,
+        )
+        .map_err(|e| StorageError::Storage(e.to_string()))?
+        .ok_or(StorageError::NotFound)?;
 
         // Convert base64 string back to bytes
-        let encrypted_data = base64::decode(secret.as_str())
+        let encrypted_data = b64_engine
+            .decode(secret.as_str())
             .map_err(|e| StorageError::Serialization(e.to_string()))?;
 
         Ok(EncryptedItem {
@@ -72,17 +65,23 @@ impl SecureStorage for LinuxStorage {
         })
     }
 
-    async fn delete(&self, id: &str) -> Result<(), StorageError> {
-        let mut attributes = HashMap::new();
-        attributes.insert("service", self.service_name.as_str());
-        attributes.insert("id", id);
-
-        libsecret::password_clear_future(Some(&self.schema), attributes)
-            .await
-            .map_err(|e| StorageError::Storage(e.to_string()))?;
+    fn delete(&self, id: &str) -> Result<(), StorageError> {
+        libsecret::password_clear_sync(
+            Some(&self.schema),
+            get_attributes_with_id(id),
+            gio::Cancellable::NONE,
+        )
+        .map_err(|e| StorageError::Storage(e.to_string()))?;
 
         Ok(())
     }
+}
+
+fn get_attributes_with_id(id: &str) -> HashMap<&str, &str> {
+    let mut attributes = HashMap::new();
+    attributes.insert("service", SERVICE_NAME);
+    attributes.insert("id", id);
+    attributes
 }
 
 // Add tests
@@ -90,9 +89,8 @@ impl SecureStorage for LinuxStorage {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_save_load_delete() {
-        let storage = LinuxStorage::new("test-service".to_string());
+    fn test_save_load_delete() {
+        let storage = LinuxStorage::new();
 
         let test_item = EncryptedItem {
             id: "test-id".to_string(),
@@ -101,17 +99,17 @@ mod tests {
         };
 
         // Test save
-        storage.save(&test_item).await.unwrap();
+        storage.save(&test_item).unwrap();
 
         // Test load
-        let loaded_item = storage.load(&test_item.id).await.unwrap();
+        let loaded_item = storage.load(&test_item.id).unwrap();
         assert_eq!(loaded_item.id, test_item.id);
         assert_eq!(loaded_item.encrypted_data, test_item.encrypted_data);
 
         // Test delete
-        storage.delete(&test_item.id).await.unwrap();
+        storage.delete(&test_item.id).unwrap();
 
         // Verify deletion
-        assert!(storage.load(&test_item.id).await.is_err());
+        assert!(storage.load(&test_item.id).is_err());
     }
 }

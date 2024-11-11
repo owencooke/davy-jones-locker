@@ -9,7 +9,7 @@ pub use error::StorageError;
 pub use item::EncryptedItem;
 
 pub trait SecureStorage {
-    async fn save(&self, item: &EncryptedItem) -> Result<(), StorageError>;
-    async fn load(&self, id: &str) -> Result<EncryptedItem, StorageError>;
-    async fn delete(&self, id: &str) -> Result<(), StorageError>;
+    fn save(&self, item: &EncryptedItem) -> Result<(), StorageError>;
+    fn load(&self, id: &str) -> Result<EncryptedItem, StorageError>;
+    fn delete(&self, id: &str) -> Result<(), StorageError>;
 }
